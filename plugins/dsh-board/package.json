@@ -1,0 +1,16 @@
+{
+  "name": "dsh-board",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Persistent project kanban board: tickets as readable Markdown files in .dsh-board/, board_* MCP tools, /board commands, session handovers, and a local auto-refreshing dashboard. Task state survives compaction and new sessions.",
+  "main": "server/index.mjs",
+  "scripts": {
+    "test": "node --test tests/store.test.mjs tests/mcp-server.test.mjs tests/dashboard.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

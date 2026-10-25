@@ -1,0 +1,5 @@
+# Registers the dsh-board plugin into the harness bundle; referenced by the
+# dsh.bundle manifest in package.json.
+- insert:
+    - id: dsh-board
+      name: dsh-board

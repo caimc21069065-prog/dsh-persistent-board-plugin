@@ -31,6 +31,10 @@
 
 更新：改动 `plugins/dsh-board/` 源码后，在插件管理里对该插件执行 **Update/Refresh**（版本号在 `.zcode-plugin/plugin.json` 中维护）。
 
+## 安装到 DeepSeek Harness (dsh)
+
+`plugins/dsh-board/` 子包声明了 `dsh.bundle` manifest（`package.json` + `cordis.patch.yml`），可经 `dsh plugin add` 从 monorepo 子目录安装。MCP server（`server/index.mjs`，stdio）与全部逻辑零 npm 依赖，Node ≥ 18 即可运行；27 个测试覆盖存储层、MCP stdio 协议与 dashboard HTTP 接口。
+
 ## 快速开始
 
 安装后在新会话里：
