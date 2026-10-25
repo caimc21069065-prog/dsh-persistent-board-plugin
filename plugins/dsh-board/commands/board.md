@@ -1,6 +1,6 @@
 ---
-description: 打开 dsh-board 持久看板（支持 init/load/add/done/status 子命令）
-argument-hint: [init | load | add <标题> | done <id> | status]
+description: 打开 dsh-board 持久看板（支持 init/load/add/done/status/refresh/serve 子命令）
+argument-hint: [init | load | add <标题> | done <id> | status | refresh | serve]
 ---
 
 按 `dsh-board:board` skill 的规则处理本命令。参数：`$ARGUMENTS`
@@ -13,4 +13,4 @@ argument-hint: [init | load | add <标题> | done <id> | status]
    - 向用户输出四列（按 config.columns）文字摘要：每列 ticket 的 id + 标题（带标签/阻塞/assignee 标记）；
    - 若宿主支持内嵌 HTML 可视化（如 ZCode Desktop），按 skill 生成静态快照 HTML 并引用展示；
    - 若参数包含 `serve` 或用户明确要实时视图，再后台启动 `board-cli serve` 并给出 URL（默认 http://127.0.0.1:7788）。
-4. 若参数是子命令：`init` → 按初始化工作流；`load` → 按加载工作流；`add <标题>` → 创建 open ticket 并简短确认（不展开新工作）；`done <id>` → 验证验收条件后关闭；`status` → 仅输出文字摘要。
+4. 若参数是子命令：`init` → 按初始化工作流；`load` → 按加载工作流；`add <标题>` → 创建 open ticket 并简短确认（不展开新工作）；`done <id>` → 验证验收条件后关闭；`status` → 仅输出文字摘要；`refresh` → 重新执行 `board_status` 输出最新摘要（每次读取都是全量重扫磁盘；若 `serve` 正在运行，页面会随文件变更自动刷新）；`serve` → 后台启动实时看板并给出 URL。

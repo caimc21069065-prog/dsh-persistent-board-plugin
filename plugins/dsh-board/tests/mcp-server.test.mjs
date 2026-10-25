@@ -99,6 +99,14 @@ test('MCP server: handshake, tool list and board tool calls over stdio', async (
     });
     assert.match(updateCall.result.content[0].text, /in_progress/);
 
+    const loose = await server.request(10, 'tools/call', {
+      name: 'board_create',
+      arguments: { title: 'Loose client', labels: 'bug,ui', blockedBy: 'T-001' },
+    });
+    const looseTicket = JSON.parse(loose.result.content[0].text);
+    assert.deepEqual(looseTicket.labels, ['bug', 'ui']);
+    assert.deepEqual(looseTicket.blockedBy, ['T-001']);
+
     const missing = await server.request(8, 'tools/call', { name: 'board_get', arguments: { id: 'T-999' } });
     assert.equal(missing.result.isError, true);
     assert.match(missing.result.content[0].text, /not found/i);

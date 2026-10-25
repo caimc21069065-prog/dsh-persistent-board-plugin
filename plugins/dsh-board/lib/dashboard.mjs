@@ -78,7 +78,15 @@ export function startDashboard({ root, port = 7788, host = '127.0.0.1' } = {}) {
       }
       const ticketMatch = /^\/api\/ticket\/([^/]+)$/.exec(url.pathname);
       if (ticketMatch) {
-        const ticket = getTicket(root, decodeURIComponent(ticketMatch[1]));
+        let id;
+        try {
+          id = decodeURIComponent(ticketMatch[1]);
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Malformed ticket id encoding' }));
+          return;
+        }
+        const ticket = getTicket(root, id);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ...ticket, _file: undefined }));
         return;
@@ -97,19 +105,30 @@ export function startDashboard({ root, port = 7788, host = '127.0.0.1' } = {}) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('not found');
     } catch (error) {
-      const message = error.code === 'NOT_FOUND' ? `Ticket not found` : error.message;
-      res.writeHead(error.code === 'NOT_FOUND' ? 404 : 500, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ error: message }));
+      const status =
+        error.code === 'NOT_FOUND' ? 404 : error.code === 'INVALID_ID' || error.code === 'VALIDATION' ? 400 : 500;
+      res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: error.code === 'NOT_FOUND' ? 'Ticket not found' : error.message }));
     }
   });
 
   return new Promise((resolve, reject) => {
     server.once('error', (error) => {
       stopWatcher();
-      reject(error);
+      reject(
+        error && error.code === 'EADDRINUSE'
+          ? new Error(
+              `Port ${port} is already in use. Stop the existing dsh-board dashboard or pick another port (--port / config ui.port).`
+            )
+          : error
+      );
     });
     server.listen(port, host, () => {
-      const url = `http://${host}:${port}`;
+      // port 0 asks the OS for a free port; report the one actually bound.
+      const url = `http://${host}:${server.address().port}`;
+      server.on('error', (error) => {
+        process.stderr.write(`[dsh-board] dashboard server error: ${error.message}\n`);
+      });
       resolve({
         url,
         close: () => {
@@ -133,5 +152,9 @@ export function openBrowser(url) {
   const platform = process.platform;
   const command = platform === 'win32' ? 'cmd' : platform === 'darwin' ? 'open' : 'xdg-open';
   const args = platform === 'win32' ? ['/c', 'start', '', url] : [url];
-  spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
+  const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+  // A missing opener (e.g. xdg-open on bare Linux) must degrade to a no-op,
+  // not crash the CLI with an unhandled 'error' event.
+  child.on('error', () => {});
+  child.unref();
 }

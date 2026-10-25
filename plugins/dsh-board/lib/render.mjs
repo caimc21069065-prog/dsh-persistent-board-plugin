@@ -16,6 +16,7 @@ export function buildBoardState(root) {
     root,
     columns: config.columns,
     doneColumns: config.doneColumns,
+    counts: status.counts,
     tickets: tickets.map((t) => ({
       id: t.id,
       title: t.title,
@@ -234,7 +235,7 @@ function cardEl(t) {
   meta.appendChild(chip(t.id, ''));
   if (t.priority) meta.appendChild(chip(t.priority, ''));
   for (const l of t.labels || []) meta.appendChild(chip(l, 'label'));
-  if (t.blocked && (t.blockedBy || []).length) meta.appendChild(chip('⛔ ' + t.blockedBy.join(', '), 'blocked'));
+  if ((t.openBlockers || []).length) meta.appendChild(chip('⛔ ' + t.openBlockers.join(', '), 'blocked'));
   else if (t.status === 'blocked') meta.appendChild(chip('⛔ blocked', 'blocked'));
   if (t.assignee) meta.appendChild(chip('👤 ' + t.assignee, ''));
   if (t.goalId) meta.appendChild(chip('🎯 ' + t.goalId, 'goal'));
@@ -335,7 +336,11 @@ if (LIVE) {
 `;
 
 export function boardHtml(state, { live } = { live: false }) {
-  const script = SCRIPT.replace('__LIVE__', live ? 'true' : 'false').replace('__STATE__', JSON.stringify(state).replace(/</g, '\\u003c'));
+  // Function replacements: ticket titles may contain $& / $' patterns that a
+  // string replacement argument would expand into the matched placeholder.
+  const script = SCRIPT
+    .replace('__LIVE__', () => (live ? 'true' : 'false'))
+    .replace('__STATE__', () => JSON.stringify(state).replace(/</g, '\\u003c'));
   return `<!doctype html>
 <html lang="zh-CN">
 <head>

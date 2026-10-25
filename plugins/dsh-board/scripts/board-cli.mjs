@@ -127,7 +127,7 @@ async function main() {
         label: flags.label !== undefined ? String(flags.label) : undefined,
         query: flags.query !== undefined ? String(flags.query) : undefined,
         includeDone: !flags.open,
-        limit: flags.limit ? parseInt(flags.limit, 10) : undefined,
+        limit: flags.limit ? parseInt(flags.limit, 10) || undefined : undefined,
         maxDescription: flags['no-trunc'] ? 0 : 160,
       });
       if (flags.json) {
@@ -150,7 +150,7 @@ async function main() {
     }
     case 'get': {
       const ticket = getTicket(root, positional[0]);
-      output(flags.json ? ticket : renderTicketText(ticket), flags);
+      output(flags.json ? { ...ticket, _file: undefined } : renderTicketText(ticket), flags);
       return;
     }
     case 'create': {
@@ -215,7 +215,7 @@ async function main() {
         return;
       }
       if (sub === 'read') {
-        const { handovers } = readHandovers(root, { limit: flags.limit ? parseInt(flags.limit, 10) : 1 });
+        const { handovers } = readHandovers(root, { limit: parseInt(flags.limit, 10) || 1 });
         output(flags.json ? handovers : handovers.map((h) => `=== ${h.file} (${h.createdAt}) ===\n${h.body.trim()}`).join('\n\n') || 'No handovers yet.', flags);
         return;
       }

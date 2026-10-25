@@ -286,3 +286,117 @@ test('render: text and html output stay informative and escaped', () => {
   assert.equal(missing.exists, false);
   assert.doesNotThrow(() => boardHtml(missing, { live: false }));
 });
+
+test('serializeTicket: internal keys never leak into frontmatter', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  createTicket(root, { title: 'A' });
+  updateTicket(root, 'T-001', { status: 'in_progress' });
+  addComment(root, 'T-001', { text: 'note' });
+  const raw = fs.readFileSync(path.join(root, 'tickets', 'T-001.md'), 'utf8');
+  assert.ok(!/_file:/.test(raw), 'internal _file must not be serialized');
+  assert.ok(getTicket(root, 'T-001')._file, 'in-memory _file still present for callers');
+});
+
+test('ticket ids: dots and Windows reserved device names are rejected', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  createTicket(root, { title: 'X' });
+  assert.throws(() => getTicket(root, 'T.001'), BoardError);
+  assert.throws(() => getTicket(root, 'CON'), BoardError);
+  assert.throws(() => createTicket(root, { title: 'Y', blockedBy: ['T.1'] }), BoardError);
+  assert.throws(() => updateTicket(root, 'T-001', { blockedBy: ['COM1'] }), BoardError);
+});
+
+test('createTicket/updateTicket accept comma strings for labels and blockedBy', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  createTicket(root, { title: 'First' });
+  const t = createTicket(root, { title: 'Loose client', labels: 'bug, ui', blockedBy: 'T-001' });
+  assert.deepEqual(t.labels, ['bug', 'ui']);
+  assert.deepEqual(t.blockedBy, ['T-001']);
+  updateTicket(root, 'T-002', { addLabels: 'perf', removeLabels: 'bug' });
+  const after = getTicket(root, 'T-002');
+  assert.deepEqual([...after.labels].sort(), ['perf', 'ui']);
+});
+
+test('handover: multiline summary captured; same-second writes get distinct files', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  writeHandover(root, { summary: 'line one\nline two' });
+  const read = readHandovers(root, { limit: 1 }).handovers[0];
+  assert.match(read.summary, /line one line two/);
+  const files = [
+    writeHandover(root, { summary: 'a' }).file,
+    writeHandover(root, { summary: 'b' }).file,
+    writeHandover(root, { summary: 'c' }).file,
+  ];
+  assert.equal(new Set(files).size, 3, 'rapid handovers in the same second must not overwrite');
+});
+
+test('initStore: reports only newly created entries', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  const first = initStore(root);
+  assert.equal(first.existed, false);
+  assert.ok(first.created.includes('tickets/'));
+  const second = initStore(root);
+  assert.equal(second.existed, true);
+  assert.deepEqual(second.created, []);
+});
+
+test('readConfig: invalid columns fall back to defaults', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  fs.writeFileSync(
+    path.join(root, 'config.json'),
+    JSON.stringify({ columns: 'open', doneColumns: 5, defaultLabels: 'bug' }),
+    'utf8'
+  );
+  const config = readConfig(root);
+  assert.deepEqual(config.columns, ['open', 'in_progress', 'blocked', 'done', 'cancelled']);
+  assert.deepEqual(config.doneColumns, ['done', 'cancelled']);
+  assert.deepEqual(config.defaultLabels, []);
+});
+
+test('listTickets: openBlockers ignore resolved and missing dependencies', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  createTicket(root, { title: 'Dep' });
+  createTicket(root, { title: 'Waiter', blockedBy: ['T-001', 'T-999'] });
+  createTicket(root, { title: 'Chained', blockedBy: ['T-002'] });
+  updateTicket(root, 'T-001', { status: 'done' });
+  const { tickets } = listTickets(root, { maxDescription: 0, includeDone: true });
+  const waiter = tickets.find((t) => t.id === 'T-002');
+  assert.equal(waiter.blocked, true);
+  assert.deepEqual(waiter.openBlockers, [], 'done dep and missing dep are both not open');
+  const chained = tickets.find((t) => t.id === 'T-003');
+  assert.deepEqual(chained.openBlockers, ['T-002']);
+});
+
+test('render: state exposes counts; HTML survives replacement patterns in titles', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  createTicket(root, { title: 'price is 5$& rising' });
+  createTicket(root, { title: "cost $$' today" });
+  const state = buildBoardState(root);
+  assert.equal(state.counts.open, 2);
+  const html = boardHtml(state, { live: false });
+  assert.ok(!html.includes('__STATE__'), 'placeholder must be fully replaced');
+  assert.ok(html.includes('price is 5$& rising'), '$& must not expand');
+  assert.ok(html.includes("cost $$' today"), "$' must not expand");
+});
+
+test('frontmatter: array items with quotes, backslashes and commas roundtrip', () => {
+  const labels = ['a,b', 'c"d', 'e\\f', 'g[h]', 'i\\', 'plain', 'tab\tinside'];
+  const text = serializeFrontmatter({ labels }) + 'body';
+  const { data } = parseFrontmatter(text);
+  assert.deepEqual(data.labels, labels);
+});

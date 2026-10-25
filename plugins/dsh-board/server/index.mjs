@@ -285,6 +285,10 @@ function main() {
       const line = buffer.slice(0, index).trim();
       buffer = buffer.slice(index + 1);
       if (!line) continue;
+      if (line.length > 1_000_000) {
+        process.stderr.write('[dsh-board] dropping oversized message (>1MB)\n');
+        continue;
+      }
       let message;
       try {
         message = JSON.parse(line);
@@ -307,7 +311,10 @@ function main() {
     }
   });
   process.stdin.on('end', () => process.exit(0));
-  process.stderr.write(`[dsh-board] MCP server v${VERSION} ready (tools: ${Object.keys(TOOL_SCHEMAS).join(', ')})\n`);
+  const { root: boardRoot, exists: storeExists } = resolveBoardRoot(process.cwd(), process.env, null);
+  process.stderr.write(
+    `[dsh-board] MCP server v${VERSION} ready (board root: ${boardRoot}${storeExists ? '' : ' [not initialized]'}; tools: ${Object.keys(TOOL_SCHEMAS).join(', ')})\n`
+  );
 }
 
 main();

@@ -12,18 +12,21 @@ function quoteScalar(value) {
   return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
 }
 
+function unescapeQuoted(value) {
+  return value.replace(/\\(["\\nrt])/g, (seq) => {
+    switch (seq[1]) {
+      case 'n': return '\n';
+      case 'r': return '\r';
+      case 't': return '\t';
+      default: return seq[1]; // \" and \\
+    }
+  });
+}
+
 function unquoteScalar(raw) {
   const value = raw.trim();
   if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1).replace(/\\["\\nrt]/g, (ch) => {
-      switch (ch) {
-        case '\\n': return '\n';
-        case '\\r': return '\r';
-        case '\\t': return '\t';
-        case '\\"': return '"';
-        default: return '\\';
-      }
-    });
+    return unescapeQuoted(value.slice(1, -1));
   }
   return value;
 }
@@ -34,23 +37,60 @@ function parseArray(raw) {
   const items = [];
   let current = '';
   let inQuotes = false;
+  let escaped = false;
+  let currentQuoted = false;
+  const push = () => {
+    items.push({ value: current, quoted: currentQuoted });
+    current = '';
+    currentQuoted = false;
+  };
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i];
-    if (ch === '"' && inner[i - 1] !== '\\') inQuotes = !inQuotes;
-    if (ch === ',' && !inQuotes) {
-      items.push(current);
-      current = '';
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+    if (inQuotes) {
+      if (ch === '\\') {
+        current += ch;
+        escaped = true;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      if (current.trim() === '') {
+        // Separator padding before the opening quote: drop it.
+        current = '';
+        inQuotes = true;
+        currentQuoted = true;
+      } else {
+        current += ch; // stray quote inside an unquoted token: keep literal
+      }
+    } else if (ch === ',') {
+      push();
     } else {
       current += ch;
     }
   }
-  items.push(current);
-  return items.map((item) => unquoteScalar(item)).filter((item) => item !== '');
+  push();
+  const out = [];
+  for (const { value, quoted } of items) {
+    // Quoted items keep edge whitespace; unquoted items are trimmed.
+    const cleaned = quoted ? unescapeQuoted(value) : value.trim();
+    if (cleaned.trim() !== '') out.push(cleaned);
+  }
+  return out;
 }
 
 export function parseFrontmatter(text) {
-  if (!text.startsWith('---')) return { data: {}, body: text };
-  const normalized = text.replace(/\r\n/g, '\n');
+  const bomStripped = text.replace(/^\uFEFF/, '');
+  if (!bomStripped.startsWith('---')) return { data: {}, body: text };
+  const normalized = bomStripped.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
   if (lines[0].trim() !== '---') return { data: {}, body: text };
   let closeIndex = -1;

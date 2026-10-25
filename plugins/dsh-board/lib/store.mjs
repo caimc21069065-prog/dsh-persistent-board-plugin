@@ -68,16 +68,22 @@ export function resolveBoardRoot(startDir = process.cwd(), env = process.env, ex
 export function readConfig(root) {
   const configPath = path.join(root, 'config.json');
   if (!fs.existsSync(configPath)) return defaultConfig();
+  let raw;
   try {
-    const raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    return {
-      ...defaultConfig(),
-      ...raw,
-      ui: { ...defaultConfig().ui, ...(raw.ui || {}) },
-    };
+    raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } catch (error) {
     throw new BoardError(`config.json is not valid JSON: ${configPath} (${error.message})`, 'CONFIG_INVALID');
   }
+  const merged = {
+    ...defaultConfig(),
+    ...raw,
+    ui: { ...defaultConfig().ui, ...(raw.ui || {}) },
+  };
+  const isColumnList = (value) => Array.isArray(value) && value.length > 0 && value.every((c) => typeof c === 'string');
+  if (!isColumnList(merged.columns)) merged.columns = defaultConfig().columns;
+  if (!isColumnList(merged.doneColumns)) merged.doneColumns = defaultConfig().doneColumns;
+  if (!Array.isArray(merged.defaultLabels)) merged.defaultLabels = [];
+  return merged;
 }
 
 export function assertExists(root) {
@@ -101,10 +107,19 @@ function atomicWrite(filePath, content) {
   fs.renameSync(tmp, filePath);
 }
 
-const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const WINDOWS_RESERVED = new Set([
+  'CON', 'PRN', 'AUX', 'NUL',
+  ...Array.from({ length: 9 }, (_, i) => `COM${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`),
+]);
+
+function isValidId(id) {
+  return ID_PATTERN.test(id) && !WINDOWS_RESERVED.has(String(id).toUpperCase());
+}
 
 function ticketPath(root, id) {
-  if (!ID_PATTERN.test(id)) {
+  if (!isValidId(id)) {
     throw new BoardError(`Invalid ticket id: ${JSON.stringify(id)}`, 'INVALID_ID');
   }
   const file = path.join(root, 'tickets', `${id}.md`);
@@ -136,7 +151,8 @@ export function serializeTicket(ticket) {
     if (ticket[key] !== undefined) data[key] = ticket[key];
   }
   for (const [key, value] of Object.entries(ticket)) {
-    if (!(key in data) && value !== undefined && key !== 'body') data[key] = value;
+    if (key === 'body' || key.startsWith('_')) continue;
+    if (!(key in data) && value !== undefined) data[key] = value;
   }
   return serializeFrontmatter(data) + '\n' + (ticket.body || '').replace(/\s*$/, '') + '\n';
 }
@@ -150,11 +166,16 @@ function parseTicketFile(file) {
 export function initStore(root, options = {}) {
   const created = [];
   const existsBefore = fs.existsSync(path.join(root, 'tickets'));
-  ensureDir(path.join(root, 'tickets'));
-  ensureDir(path.join(root, 'stories'));
-  ensureDir(path.join(root, 'handovers'));
-  ensureDir(path.join(root, 'cache'));
-  created.push('tickets/', 'stories/', 'handovers/', 'cache/');
+  const ensureTracked = (rel) => {
+    if (!fs.existsSync(path.join(root, rel))) {
+      ensureDir(path.join(root, rel));
+      created.push(`${rel}/`);
+    }
+  };
+  ensureTracked('tickets');
+  ensureTracked('stories');
+  ensureTracked('handovers');
+  ensureTracked('cache');
 
   const configPath = path.join(root, 'config.json');
   if (!fs.existsSync(configPath)) {
@@ -180,10 +201,10 @@ export function createTicket(root, input = {}) {
     throw new BoardError(`Unknown status "${status}". Configured columns: ${config.columns.join(', ')}`, 'VALIDATION');
   }
   const now = new Date().toISOString();
-  const labels = (input.labels || config.defaultLabels || []).map((l) => String(l).trim()).filter(Boolean);
-  const blockedBy = (input.blockedBy || []).map((b) => String(b).trim()).filter(Boolean);
+  const labels = normalizeList(input.labels) ?? normalizeList(config.defaultLabels) ?? [];
+  const blockedBy = normalizeList(input.blockedBy) ?? [];
   for (const ref of blockedBy) {
-    if (!ID_PATTERN.test(ref)) throw new BoardError(`Invalid blockedBy reference: ${JSON.stringify(ref)}`, 'VALIDATION');
+    if (!isValidId(ref)) throw new BoardError(`Invalid blockedBy reference: ${JSON.stringify(ref)}`, 'VALIDATION');
   }
 
   const ticket = {
@@ -203,7 +224,7 @@ export function createTicket(root, input = {}) {
 
   const dir = path.join(root, 'tickets');
   ensureDir(dir);
-  const prefix = input.idPrefix ? String(input.idPrefix) : 'T';
+  const prefix = (input.idPrefix ? String(input.idPrefix) : 'T').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12) || 'T';
   for (let attempt = 0; attempt < 1000; attempt++) {
     ticket.id = nextId(root, prefix);
     const file = ticketPath(root, ticket.id);
@@ -251,30 +272,20 @@ export function updateTicket(root, id, patch = {}) {
     ticket.status = status;
   }
   if (patch.labels !== undefined) {
-    ticket.labels = (Array.isArray(patch.labels) ? patch.labels : String(patch.labels).split(','))
-      .map((l) => String(l).trim())
-      .filter(Boolean);
+    ticket.labels = normalizeList(patch.labels) ?? [];
   }
   if (patch.addLabels !== undefined) {
-    const add = (Array.isArray(patch.addLabels) ? patch.addLabels : String(patch.addLabels).split(','))
-      .map((l) => String(l).trim())
-      .filter(Boolean);
+    const add = normalizeList(patch.addLabels) ?? [];
     ticket.labels = [...new Set([...(ticket.labels || []), ...add])];
   }
   if (patch.removeLabels !== undefined) {
-    const remove = new Set(
-      (Array.isArray(patch.removeLabels) ? patch.removeLabels : String(patch.removeLabels).split(','))
-        .map((l) => String(l).trim())
-        .filter(Boolean)
-    );
+    const remove = new Set(normalizeList(patch.removeLabels) ?? []);
     ticket.labels = (ticket.labels || []).filter((l) => !remove.has(l));
   }
   if (patch.blockedBy !== undefined) {
-    const refs = (Array.isArray(patch.blockedBy) ? patch.blockedBy : String(patch.blockedBy).split(','))
-      .map((b) => String(b).trim())
-      .filter(Boolean);
+    const refs = normalizeList(patch.blockedBy) ?? [];
     for (const ref of refs) {
-      if (!ID_PATTERN.test(ref)) throw new BoardError(`Invalid blockedBy reference: ${JSON.stringify(ref)}`, 'VALIDATION');
+      if (!isValidId(ref)) throw new BoardError(`Invalid blockedBy reference: ${JSON.stringify(ref)}`, 'VALIDATION');
     }
     ticket.blockedBy = refs;
   }
@@ -324,6 +335,14 @@ function truncate(text, max) {
   return clean.slice(0, Math.max(0, max - 1)).trimEnd() + '…';
 }
 
+// Accepts arrays (MCP schema) or comma-separated strings (CLI / loose clients);
+// undefined passes through so callers can keep their own defaults.
+function normalizeList(value) {
+  if (value === undefined || value === null) return undefined;
+  const list = Array.isArray(value) ? value : String(value).split(',');
+  return list.map((item) => String(item).trim()).filter((item) => item !== '');
+}
+
 export function listTickets(root, filter = {}) {
   assertExists(root);
   const config = readConfig(root);
@@ -352,6 +371,10 @@ export function listTickets(root, filter = {}) {
       warnings.push(`skipped ${name}: ${error.message}`);
     }
   }
+
+  // Dependency resolution from the in-memory index: no per-ref disk reads, so a
+  // 500-ticket board stays well inside the <100ms listing budget (NFR-2).
+  const byId = new Map(tickets.map((t) => [String(t.id), t]));
 
   let result = tickets;
   if (filter.status) {
@@ -401,12 +424,8 @@ export function listTickets(root, filter = {}) {
       updatedAt: t.updatedAt,
       blocked: (t.blockedBy || []).length > 0,
       openBlockers: (t.blockedBy || []).filter((ref) => {
-        try {
-          const dep = getTicket(root, ref);
-          return !doneSet.has(dep.status);
-        } catch {
-          return false;
-        }
+        const dep = byId.get(String(ref));
+        return dep ? !doneSet.has(dep.status) : false;
       }),
       description: maxDescription > 0 ? truncate(t.body, maxDescription) : undefined,
       _file: undefined,
@@ -459,9 +478,12 @@ export function writeHandover(root, input = {}) {
   let slug = 'session';
   if (input.sessionId) {
     const candidate = String(input.sessionId).toLowerCase().replace(/[^a-z0-9._-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-    if (candidate) slug = candidate;
+    if (SLUG_PATTERN.test(candidate)) slug = candidate;
   }
-  const file = path.join(root, 'handovers', `${base}-${slug}.md`);
+  let file = path.join(root, 'handovers', `${base}-${slug}.md`);
+  for (let n = 2; fs.existsSync(file); n++) {
+    file = path.join(root, 'handovers', `${base}-${slug}-${n}.md`);
+  }
   const sections = [`## Summary`, '', summary, ''];
   const decisions = String(input.decisions || '').trim();
   if (decisions) sections.push('## Decisions', '', decisions, '');
@@ -491,7 +513,7 @@ export function readHandovers(root, { limit = 1 } = {}) {
   for (const name of files) {
     const file = path.join(dir, name);
     const { data, body } = parseFrontmatter(fs.readFileSync(file, 'utf8'));
-    const summaryMatch = body.match(/^## Summary\s*\n+([\s\S]*?)(?=\n## |$)/m);
+    const summaryMatch = body.match(/^## Summary\s*\n+([\s\S]*?)(?=\n## |$)/);
     handovers.push({ file: name, ...data, body, summary: truncate(summaryMatch ? summaryMatch[1] : body, 400) });
   }
   return { handovers };
