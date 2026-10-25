@@ -1,0 +1,18 @@
+{
+  "name": "dev-dsh-persistent-board-plugin-cf2a1db1",
+  "plugins": [
+    {
+      "name": "dsh-board",
+      "source": "./dsh-board",
+      "version": "0.1.0",
+      "description": "Persistent project kanban board: tickets stored as readable files in .dsh-board/, survive compaction and new sessions. Provides board_* MCP tools, a /board command family, an auto-refreshing local dashboard, and session-start/handover continuity.",
+      "displayName": "DSH Board",
+      "displayName_i18n": {
+        "zh-CN": "持久看板"
+      },
+      "description_i18n": {
+        "zh-CN": "项目内持久看板：.dsh-board/ 文件账本 + board_* 工具 + /board 命令族 + 本地实时看板，跨会话与压缩不丢任务状态"
+      }
+    }
+  ]
+}

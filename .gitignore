@@ -1,0 +1,11 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Board machine-local files are ignored by .dsh-board/.gitignore itself;
+# uncomment the next line if you prefer to keep boards fully local per project:
+# .dsh-board/
+
+# OS
+Thumbs.db
+.DS_Store
