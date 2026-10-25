@@ -4,7 +4,7 @@
     {
       "name": "dsh-board",
       "source": "./dsh-board",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Persistent project kanban board: tickets stored as readable files in .dsh-board/, survive compaction and new sessions. Provides board_* MCP tools, a /board command family, an auto-refreshing local dashboard, and session-start/handover continuity.",
       "displayName": "DSH Board",
       "displayName_i18n": {

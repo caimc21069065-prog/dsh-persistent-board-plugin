@@ -38,7 +38,7 @@
 | 命令 | 作用 |
 |------|------|
 | `/dsh-board:board-init` | 在当前项目创建 `.dsh-board/`（幂等，不覆盖已有配置） |
-| `/dsh-board:board` | 打开看板（文字摘要 + 内嵌快照；`/dsh-board:board serve` 启动实时页面） |
+| `/dsh-board:board` | 打开看板（文字摘要 + 内嵌快照；`serve` 启动实时页面，`refresh` 强制重扫输出最新摘要） |
 | `/dsh-board:board-add 修复登录超时` | 中途快速记一张 open ticket（不打断主任务） |
 | `/dsh-board:board-load` | 把 open/in_progress/blocked + 最近交接注入当前会话（开场/压缩后用） |
 | `/dsh-board:board-done T-001` | 验证验收条件后关闭 ticket |
@@ -128,7 +128,7 @@ node plugins/dsh-board/scripts/board-cli.mjs snapshot --out board.html  # 静态
 
 ```bash
 cd plugins/dsh-board
-node --test tests/store.test.mjs tests/mcp-server.test.mjs   # 16 个测试
+node --test tests/store.test.mjs tests/mcp-server.test.mjs tests/dashboard.test.mjs   # 27 个测试（含 dashboard HTTP 集成与 MCP stdio 冒烟）
 node scripts/board-cli.mjs help
 ```
 

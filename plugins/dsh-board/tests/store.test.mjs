@@ -220,6 +220,21 @@ test('listTickets: filters, sorting, truncation, warnings', () => {
   assert.ok(warned.tickets.every((t) => t.id !== undefined));
 });
 
+test('listTickets: skips renamed files whose frontmatter id disagrees, and tolerates junk limits', () => {
+  const project = tmpProject();
+  const root = boardDir(project);
+  initStore(root);
+  createTicket(root, { title: 'Good' });
+  createTicket(root, { title: 'Renamed' });
+  // Simulate a hand rename: file moved but frontmatter id not updated.
+  fs.renameSync(path.join(root, 'tickets', 'T-002.md'), path.join(root, 'tickets', 'T-099.md'));
+  const { tickets, warnings } = listTickets(root, { maxDescription: 0 });
+  assert.deepEqual(tickets.map((t) => t.id), ['T-001']);
+  assert.ok(warnings.some((w) => w.includes('T-099.md') && w.includes('T-002')));
+  assert.equal(listTickets(root, { limit: 'abc', maxDescription: 0 }).total, 1);
+  assert.equal(listTickets(root, { limit: '1', maxDescription: 0 }).tickets.length, 1);
+});
+
 test('boardStatus: counts and blocked summary; quiet when missing', () => {
   const project = tmpProject();
   const root = boardDir(project);

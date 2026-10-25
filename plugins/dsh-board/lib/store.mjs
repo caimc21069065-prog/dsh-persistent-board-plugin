@@ -250,10 +250,6 @@ export function getTicket(root, id) {
   return parseTicketFile(file);
 }
 
-export function ticketExists(root, id) {
-  return fs.existsSync(ticketPath(root, id));
-}
-
 export function updateTicket(root, id, patch = {}) {
   assertExists(root);
   const config = readConfig(root);
@@ -366,6 +362,12 @@ export function listTickets(root, filter = {}) {
         warnings.push(`skipped ${name}: missing id or title in frontmatter`);
         continue;
       }
+      // The frontmatter id is canonical; a mismatch with the filename means a
+      // hand rename/edit went wrong — surface it instead of forking the truth.
+      if (String(parsed.id) !== name.replace(/\.md$/, '')) {
+        warnings.push(`skipped ${name}: frontmatter id ${parsed.id} does not match filename`);
+        continue;
+      }
       tickets.push(parsed);
     } catch (error) {
       warnings.push(`skipped ${name}: ${error.message}`);
@@ -406,7 +408,8 @@ export function listTickets(root, filter = {}) {
   });
 
   const total = result.length;
-  if (filter.limit) result = result.slice(0, filter.limit);
+  const limit = Number(filter.limit);
+  if (Number.isFinite(limit) && limit > 0) result = result.slice(0, limit);
   const maxDescription = filter.maxDescription !== undefined ? Number(filter.maxDescription) : 160;
 
   return {

@@ -43,6 +43,12 @@ body 即描述（需求 FR-1.3 的 `description`），评论由 `board_comment` 
 
 临时文件 + `rename`（同目录原子）；所有写路径经 `resolve` 后强制前缀校验在 board root 内。
 
+### 2.5 并发与手工编辑（v1 明确边界）
+
+- **lost-update 窗口**：`updateTicket` 是读-改-写，无跨进程锁 —— 两个 agent（或 CLI 与 MCP 并行）同时改同一张 ticket 时，后写覆盖前写。v1 接受该限制（单会话、低频写场景）；二期派发时在 `cache/` 引入文件锁。
+- **id 权威**：frontmatter `id` 是唯一权威，文件名必须与之一致。手工重命名文件而未同步 frontmatter 时，`listTickets` 跳过该文件并给出告警 —— 宁可显式暴露，不让列表视图与单读视图分裂。
+- **文件系统安全**：含点号 id 与 Windows 保留设备名（CON/NUL/COM1…）一律拒绝（id 与 `blockedBy` 引用同规）。
+
 ### 2.4 config.json
 
 ```json
@@ -97,17 +103,19 @@ hook 输出刻意极短（≤10 行），且无 store 时零输出 —— 遵守
 3. **验证门**：executor 必须回传验证证据（测试输出、diff 摘要）写入 ticket 评论，才允许置 done
 4. **全局收件箱**：用户级 store（FR-1.7），跨项目旁路任务
 
+**明确延后（v1 不实现，避免文档与实现脱节）**：FR-5.2（in_progress 显示到 trajectory/状态区，依赖宿主 UI slot API）、NFR-4（board 变更写审计事件）、FR-2.6 的完整状态计数条（当前为 CSS grid 自然换行的尽力实现）。
+
 预留点：`cache/`（锁）、`stories/`（层级）、`story` 字段、`config.json` 版本号迁移。
 
 ## 7. 验证情况
 
 | 验证项 | 状态 |
 |--------|------|
-| `node --test`（store/frontmatter/render 单测） | 15/15 通过 |
-| MCP stdio 冒烟（initialize → tools/list → 6 次工具调用 + 错误路径） | 通过 |
-| CLI E2E（init→create→update→comment→list→done→handover→status→snapshot→serve） | 通过 |
-| dashboard HTTP + SSE（/api/state、/api/ticket/:id、/api/events） | 通过（curl 级） |
+| `node --test`（store/frontmatter/render + dashboard HTTP 集成 + MCP stdio 冒烟） | 27/27 通过 |
+| 性能（500 tickets，每张含依赖） | list 51ms / status 38ms（修复前 124/108ms，NFR-2 预算 100ms） |
+| MCP stdio 冒烟（initialize → tools/list → 工具调用 + 错误路径 + 宽松输入容忍） | 通过 |
+| dashboard HTTP/SSE（state、ticket、404/400 错误码、OS 随机端口） | 通过（自动化测试 + 0.1.0 期浏览器人工验收） |
 | hooks（无 store 静默 / 默认关 / 开启后摘要 / PreCompact） | 通过 |
 | 插件 preflight（manifest 资源存在、路径包含、占位符） | 通过 |
 | `zcode plugins validate`（schema 级） | 未执行：本机无 zcode CLI |
-| 浏览器人工验收 dashboard 视觉 | 见交付说明 |
+| 两轮设计+代码审查 | 完成：第 1 轮修复 9 类问题（含 frontmatter 泄漏、$& 污染、NFR-2 性能、hooks 跨平台）、第 2 轮修复 4 类（id/文件名不一致策略、limit 健壮性、死代码、文档边界声明），详见 git log |

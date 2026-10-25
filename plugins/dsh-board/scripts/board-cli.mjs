@@ -23,7 +23,7 @@ import {
 import { buildBoardState, boardHtml, renderBoardText, renderTicketText } from '../lib/render.mjs';
 import { startDashboard, openBrowser } from '../lib/dashboard.mjs';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 
 function usage() {
   return `dsh-board CLI v${VERSION}

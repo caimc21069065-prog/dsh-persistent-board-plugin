@@ -20,7 +20,7 @@ import {
 } from '../lib/store.mjs';
 import { startDashboard } from '../lib/dashboard.mjs';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 
 const TOOL_SCHEMAS = {
   board_init: {
